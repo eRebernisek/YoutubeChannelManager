@@ -57,20 +57,28 @@ import { YoutubeApiService } from '../../core/youtube-api.service';
           <div class="card stack">
             <div class="row">
               <strong>Live</strong>
-              @if (d.live.length) {
+              @if (d.liveUnavailable) {
+                <span class="badge warn">Not available</span>
+              } @else if (d.live.length) {
                 <span class="badge danger">● LIVE</span>
               } @else {
                 <span class="badge">Offline</span>
               }
             </div>
-            @for (b of d.live; track b.id) {
-              <a [href]="'https://www.youtube.com/watch?v=' + b.id" target="_blank" rel="noopener" class="ellipsis">{{ b.snippet.title }}</a>
-            }
-            @for (b of d.upcoming; track b.id) {
-              <span class="small ellipsis">
-                <span class="muted">Upcoming {{ when(b.snippet.scheduledStartTime) }}:</span>
-                {{ b.snippet.title }}
-              </span>
+            @if (d.liveUnavailable) {
+              <p class="muted small">
+                Live status needs live streaming enabled on this channel. Channel stats still load.
+              </p>
+            } @else {
+              @for (b of d.live; track b.id) {
+                <a [href]="'https://www.youtube.com/watch?v=' + b.id" target="_blank" rel="noopener" class="ellipsis">{{ b.snippet.title }}</a>
+              }
+              @for (b of d.upcoming; track b.id) {
+                <span class="small ellipsis">
+                  <span class="muted">Upcoming {{ when(b.snippet.scheduledStartTime) }}:</span>
+                  {{ b.snippet.title }}
+                </span>
+              }
             }
           </div>
         </div>
@@ -121,15 +129,17 @@ export class Dashboard {
   protected readonly data = resource({
     params: () => this.channels.activeId() ?? undefined,
     loader: async () => {
+      // Live APIs fail on channels without live streaming; don't block channel stats.
       const [channel, live, upcoming] = await Promise.all([
         this.api.myChannel(),
-        this.api.broadcasts('active', 5),
-        this.api.broadcasts('upcoming', 5),
+        this.api.broadcasts('active', 5).catch(() => null),
+        this.api.broadcasts('upcoming', 5).catch(() => null),
       ]);
       return {
         channel,
-        live: live.items,
-        upcoming: upcoming.items,
+        live: live?.items ?? [],
+        upcoming: upcoming?.items ?? [],
+        liveUnavailable: live === null && upcoming === null,
       };
     },
   });
