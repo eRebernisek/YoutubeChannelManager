@@ -17,6 +17,16 @@ import { BulkEdit } from './bulk-edit';
 
 type PrivacyFilter = 'public' | 'unlisted' | 'private' | 'scheduled';
 type KindFilter = 'Short' | 'Video' | 'Live/VOD';
+type PageSize = 10 | 20 | 30;
+
+/** Effective sort date: scheduled publish time when set, otherwise publishedAt. Newest first. */
+function sortDate(v: Video): number {
+  if (v.status.publishAt) {
+    const at = Date.parse(v.status.publishAt);
+    if (!Number.isNaN(at)) return at;
+  }
+  return v.snippet.publishedAt ? Date.parse(v.snippet.publishedAt) : 0;
+}
 
 /** The channel's videos from the uploads playlist (1 unit per 50), with filters and bulk edit. */
 @Component({
@@ -38,18 +48,23 @@ type KindFilter = 'Short' | 'Video' | 'Live/VOD';
           placeholder="Filter by title, description or tag"
           style="flex: 1; min-width: 200px"
           [value]="text()"
-          (input)="text.set($any($event.target).value)"
+          (input)="onText($any($event.target).value)"
         />
-        <select [value]="privacy()" (change)="privacy.set($any($event.target).value)" aria-label="Privacy">
+        <select [value]="privacy()" (change)="onPrivacy($any($event.target).value)" aria-label="Privacy">
           <option value="public">Public</option>
           <option value="unlisted">Unlisted</option>
           <option value="private">Private</option>
           <option value="scheduled">Scheduled</option>
         </select>
-        <select [value]="kind()" (change)="kind.set($any($event.target).value)" aria-label="Type">
+        <select [value]="kind()" (change)="onKind($any($event.target).value)" aria-label="Type">
           <option value="Video">Videos</option>
           <option value="Short">Shorts (≤ 3 min)</option>
           <option value="Live/VOD">Live / VODs</option>
+        </select>
+        <select [value]="pageSize()" (change)="onPageSize(+$any($event.target).value)" aria-label="Per page">
+          <option [value]="10">10 per page</option>
+          <option [value]="20">20 per page</option>
+          <option [value]="30">30 per page</option>
         </select>
       </div>
 
@@ -62,18 +77,20 @@ type KindFilter = 'Short' | 'Video' | 'Live/VOD';
       }
 
       <div class="card" style="padding: 0">
-        @if (filtered().length) {
+        @if (paged().length) {
           <div class="list-item small">
             <label class="check">
               <input type="checkbox" [checked]="allSelected()" (change)="toggleAll()" />
-              Select {{ filtered().length }} shown
+              Select {{ paged().length }} on this page
             </label>
             @if (selected().size) {
               <span class="muted">· {{ selected().size }} selected</span>
             }
+            <span class="spacer"></span>
+            <span class="muted">{{ rangeLabel() }}</span>
           </div>
         }
-        @for (v of filtered(); track v.id) {
+        @for (v of paged(); track v.id) {
           <div class="sel-row">
             <input
               type="checkbox"
@@ -89,6 +106,23 @@ type KindFilter = 'Short' | 'Video' | 'Live/VOD';
           }
         }
       </div>
+
+      @if (filtered().length) {
+        <div class="row pager">
+          <button type="button" class="sm" [disabled]="page() <= 0" (click)="goPage(page() - 1)">
+            Previous
+          </button>
+          <span class="muted small">Page {{ page() + 1 }} of {{ totalPages() }}</span>
+          <button
+            type="button"
+            class="sm"
+            [disabled]="page() >= totalPages() - 1"
+            (click)="goPage(page() + 1)"
+          >
+            Next
+          </button>
+        </div>
+      }
 
       @if (loading()) {
         <div class="spinner"></div>
@@ -115,6 +149,10 @@ type KindFilter = 'Short' | 'Video' | 'Live/VOD';
         border-bottom: 0;
       }
     }
+    .pager {
+      justify-content: center;
+      gap: 0.75rem;
+    }
   `,
 })
 export class VideoList {
@@ -128,6 +166,8 @@ export class VideoList {
   protected readonly text = signal('');
   protected readonly privacy = signal<PrivacyFilter>('public');
   protected readonly kind = signal<KindFilter>('Video');
+  protected readonly pageSize = signal<PageSize>(10);
+  protected readonly page = signal(0);
   protected readonly selected = signal(new Set<string>());
 
   protected readonly filtered = computed(() => {
@@ -135,25 +175,47 @@ export class VideoList {
     const privacy = this.privacy();
     const kind = this.kind();
     const now = Date.now();
-    return this.videos().filter((v) => {
-      const scheduled = !!v.status.publishAt && Date.parse(v.status.publishAt) > now;
-      if (privacy === 'scheduled' ? !scheduled : v.status.privacyStatus !== privacy) {
-        return false;
-      }
-      if (videoKind(v) !== kind) return false;
-      if (!q) return true;
-      return (
-        v.snippet.title.toLowerCase().includes(q) ||
-        v.snippet.description?.toLowerCase().includes(q) ||
-        !!v.snippet.tags?.some((t) => t.toLowerCase().includes(q))
-      );
-    });
+    return this.videos()
+      .filter((v) => {
+        const scheduled = !!v.status.publishAt && Date.parse(v.status.publishAt) > now;
+        if (privacy === 'scheduled' ? !scheduled : v.status.privacyStatus !== privacy) {
+          return false;
+        }
+        if (videoKind(v) !== kind) return false;
+        if (!q) return true;
+        return (
+          v.snippet.title.toLowerCase().includes(q) ||
+          v.snippet.description?.toLowerCase().includes(q) ||
+          !!v.snippet.tags?.some((t) => t.toLowerCase().includes(q))
+        );
+      })
+      .sort((a, b) => sortDate(b) - sortDate(a));
   });
+
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.filtered().length / this.pageSize())),
+  );
+
+  protected readonly paged = computed(() => {
+    const size = this.pageSize();
+    const start = this.page() * size;
+    return this.filtered().slice(start, start + size);
+  });
+
+  protected readonly rangeLabel = computed(() => {
+    const total = this.filtered().length;
+    if (!total) return '0 of 0';
+    const size = this.pageSize();
+    const start = this.page() * size + 1;
+    const end = Math.min(total, start + size - 1);
+    return `${start}–${end} of ${total}`;
+  });
+
   protected readonly selectedVideos = computed(() =>
     this.videos().filter((v) => this.selected().has(v.id)),
   );
   protected readonly allSelected = computed(
-    () => this.filtered().length > 0 && this.filtered().every((v) => this.selected().has(v.id)),
+    () => this.paged().length > 0 && this.paged().every((v) => this.selected().has(v.id)),
   );
 
   private uploadsId?: string;
@@ -164,6 +226,35 @@ export class VideoList {
       this.channels.activeId();
       untracked(() => void this.reload());
     });
+    effect(() => {
+      const max = this.totalPages() - 1;
+      if (this.page() > max) this.page.set(max);
+    });
+  }
+
+  protected onText(value: string): void {
+    this.text.set(value);
+    this.page.set(0);
+  }
+
+  protected onPrivacy(value: PrivacyFilter): void {
+    this.privacy.set(value);
+    this.page.set(0);
+  }
+
+  protected onKind(value: KindFilter): void {
+    this.kind.set(value);
+    this.page.set(0);
+  }
+
+  protected onPageSize(value: number): void {
+    if (value !== 10 && value !== 20 && value !== 30) return;
+    this.pageSize.set(value);
+    this.page.set(0);
+  }
+
+  protected goPage(index: number): void {
+    this.page.set(Math.max(0, Math.min(index, this.totalPages() - 1)));
   }
 
   protected async reload(): Promise<void> {
@@ -172,6 +263,7 @@ export class VideoList {
     this.selected.set(new Set());
     this.nextPage.set(undefined);
     this.uploadsId = undefined;
+    this.page.set(0);
     await this.fetchPage();
   }
 
@@ -196,7 +288,7 @@ export class VideoList {
     const all = this.allSelected();
     this.selected.update((s) => {
       const next = new Set(s);
-      for (const v of this.filtered()) {
+      for (const v of this.paged()) {
         if (all) next.delete(v.id);
         else next.add(v.id);
       }
