@@ -1,0 +1,277 @@
+<section class="page">
+  <div class="page-head">
+    <h1>Upload</h1>
+    <span class="muted small">to <strong>{{ channels.displayName(channels.active()) }}</strong></span>
+    <span class="spacer"></span>
+    <a class="small" [href]="templateUrl" target="_blank" rel="noopener">.md template</a>
+  </div>
+
+  @if (!auditApproved) {
+    <p class="alert warn small">
+      Uploads stay <strong>Private</strong> until the YouTube API audit is approved, even when scheduled.
+      Publish them manually in YouTube Studio for now.
+    </p>
+  }
+
+  @if (phase() === 'edit') {
+    <!-- Files -->
+    <div
+      class="card drop"
+      [class.dragging]="dragging()"
+      (dragover)="onDragOver($event)"
+      (dragleave)="dragging.set(false)"
+      (drop)="onDrop($event)"
+    >
+      <p>
+        Drop the <strong>video</strong>, its <strong>thumbnail</strong> (JPG/PNG) and its
+        <strong>.md</strong> metadata file here, or
+        <label class="btn sm">
+          pick files
+          <input
+            type="file"
+            multiple
+            hidden
+            accept="video/*,.mp4,.mov,.m4v,.webm,.md,.markdown,.txt,image/jpeg,image/png"
+            (change)="onPick($event)"
+          />
+        </label>
+      </p>
+      <div class="files">
+        <div class="file" [class.missing]="!videoFile()">
+          <span class="muted small">Video</span>
+          @if (videoFile(); as v) {
+            <span class="ellipsis">{{ v.name }}</span>
+            <span class="muted small">{{ formatBytes(v.size) }}</span>
+            <button type="button" class="sm ghost" (click)="clearVideo()" aria-label="Remove video">✕</button>
+          } @else {
+            <span class="muted">required</span>
+          }
+        </div>
+        <div class="file">
+          <span class="muted small">Thumbnail</span>
+          @if (thumbFile(); as t) {
+            @if (thumbPreview(); as src) {
+              <img class="thumb" [src]="src" alt="Thumbnail preview" />
+            }
+            <span class="ellipsis">{{ t.name }}</span>
+            <button type="button" class="sm ghost" (click)="setThumb(null)" aria-label="Remove thumbnail">✕</button>
+          } @else {
+            <span class="muted">optional</span>
+          }
+        </div>
+        <div class="file">
+          <span class="muted small">Metadata</span>
+          @if (mdFile(); as m) {
+            <span class="ellipsis">{{ m.name }}</span>
+            <button type="button" class="sm ghost" (click)="clearMd()" aria-label="Remove metadata file">✕</button>
+          } @else {
+            <span class="muted">optional .md</span>
+          }
+        </div>
+      </div>
+    </div>
+
+    @if (channelMismatch(); as mm) {
+      <div class="alert warn stack">
+        <span>
+          The .md says <strong>channel: {{ mm.ref }}</strong>, but you're uploading to
+          <strong>{{ channels.displayName(channels.active()) }}</strong>.
+        </span>
+        <div class="row">
+          @if (mm.known) {
+            <button type="button" class="sm" (click)="switchToMdChannel()">
+              Switch to {{ channels.displayName(mm.known) }}
+            </button>
+          }
+          <label class="check small">
+            <input type="checkbox" [checked]="channelConfirmed()" (change)="channelConfirmed.set($any($event.target).checked)" />
+            Upload to {{ channels.displayName(channels.active()) }} anyway
+          </label>
+        </div>
+      </div>
+    }
+
+    @for (n of notes(); track n) {
+      <p class="alert info small">{{ n }}</p>
+    }
+
+    <!-- Fields -->
+    @let f = form();
+    <div class="layout">
+      <div class="card stack">
+        <label class="field">
+          Title <span class="small">{{ f.title.length }}/100</span>
+          <input [value]="f.title" (input)="patch({ title: $any($event.target).value })" />
+        </label>
+        <label class="field">
+          Description
+          <textarea rows="14" [value]="f.description" (input)="patch({ description: $any($event.target).value })"></textarea>
+        </label>
+        <div class="row">
+          <button type="button" class="sm" (click)="chaptersToTop()">Move chapters to top</button>
+        </div>
+        <label class="field">
+          Tags (comma-separated)
+          <textarea rows="2" [value]="f.tags" (input)="patch({ tags: $any($event.target).value })"></textarea>
+        </label>
+        <label class="field">
+          Comment to post after upload (the API can't pin it; pin it in Studio)
+          <textarea rows="3" [value]="f.pinnedComment" (input)="patch({ pinnedComment: $any($event.target).value })"></textarea>
+        </label>
+      </div>
+
+      <div class="stack">
+        <div class="card stack">
+          <label class="field">
+            Visibility
+            <select [value]="f.privacy" (change)="patch({ privacy: $any($event.target).value })">
+              <option value="public">Publish now (public)</option>
+              <option value="scheduled">Schedule</option>
+              <option value="unlisted">Unlisted</option>
+              <option value="private">Private</option>
+            </select>
+          </label>
+          @if (f.privacy === 'scheduled') {
+            <label class="field">
+              Publish at ({{ tz }})
+              <input type="datetime-local" [value]="f.publishAt" (input)="patch({ publishAt: $any($event.target).value })" />
+            </label>
+          }
+          <button type="button" class="sm" (click)="useNextSlot()">Use next schedule slot</button>
+          <span class="muted small">
+            Scheduled videos upload now as Private, and YouTube publishes them at that time. The tab can be
+            closed once the upload finishes.
+          </span>
+        </div>
+
+        <div class="card stack">
+          <label class="field">
+            Category
+            <select (change)="patch({ categoryId: $any($event.target).value })">
+              @for (c of categories.list.value() ?? []; track c.id) {
+                <option [value]="c.id" [selected]="c.id === f.categoryId">{{ c.snippet.title }}</option>
+              } @empty {
+                <option [value]="f.categoryId">{{ f.categoryId }}</option>
+              }
+            </select>
+          </label>
+          <label class="field">
+            Language
+            <input [value]="f.language" placeholder="en" (input)="patch({ language: $any($event.target).value })" />
+          </label>
+          <label class="field">
+            License
+            <select [value]="f.license" (change)="patch({ license: $any($event.target).value })">
+              <option value="youtube">Standard YouTube License</option>
+              <option value="creativeCommon">Creative Commons</option>
+            </select>
+          </label>
+          <label class="check">
+            <input type="checkbox" [checked]="f.madeForKids" (change)="patch({ madeForKids: $any($event.target).checked })" />
+            Made for kids
+          </label>
+          <label class="check">
+            <input type="checkbox" [checked]="f.embeddable" (change)="patch({ embeddable: $any($event.target).checked })" />
+            Allow embedding
+          </label>
+        </div>
+
+        <div class="card stack">
+          <strong>Playlists</strong>
+          @if (playlists.isLoading()) {
+            <div class="spinner sm"></div>
+          }
+          @for (p of playlists.value() ?? []; track p.id) {
+            <label class="check small">
+              <input
+                type="checkbox"
+                [checked]="f.playlistIds.includes(p.id)"
+                (change)="togglePlaylist(p.id, $any($event.target).checked)"
+              />
+              {{ p.snippet.title }}
+            </label>
+          } @empty {
+            @if (!playlists.isLoading()) {
+              <span class="muted small">No playlists on this channel.</span>
+            }
+          }
+        </div>
+      </div>
+    </div>
+
+    @for (e of errors(); track e) {
+      <p class="alert error small">{{ e }}</p>
+    }
+
+    <div class="row actions">
+      <button type="button" class="primary" [disabled]="errors().length > 0" (click)="start()">
+        Upload ({{ publishLabel() }})
+      </button>
+      <span class="muted small">
+        ~{{ estimatedCost() | number }} quota units · {{ quota.remaining() | number }} left today
+      </span>
+    </div>
+  }
+
+  @if (upload(); as u) {
+    @if (phase() === 'uploading') {
+      <div class="card stack">
+        <strong class="ellipsis">{{ form().title }}</strong>
+        <div class="progress"><span [style.width.%]="percent()"></span></div>
+        <div class="row small">
+          <span>{{ formatBytes(u.sent()) }} / {{ formatBytes(u.total) }} ({{ percent() | number: '1.0-0' }}%)</span>
+          <span class="badge">{{ u.state() }}</span>
+          <span class="spacer"></span>
+          @if (u.state() === 'paused' || u.state() === 'failed') {
+            <button type="button" class="sm primary" (click)="u.resume()">Resume</button>
+          } @else {
+            <button type="button" class="sm" (click)="u.pause()">Pause</button>
+          }
+          <button type="button" class="sm danger" (click)="cancel()">Cancel</button>
+        </div>
+        @if (u.error(); as err) {
+          <p class="alert error small">{{ err }}</p>
+        }
+        <p class="muted small">Keep this tab open until the upload finishes. The channel picker is locked meanwhile.</p>
+      </div>
+    }
+  }
+
+  @if (phase() === 'finishing' || phase() === 'done') {
+    <div class="card stack">
+      <h2>{{ phase() === 'done' ? 'Done' : 'Finishing…' }}</h2>
+      @for (s of steps(); track $index) {
+        <div class="row small">
+          <span class="badge" [class.ok]="s.status === 'ok'" [class.danger]="s.status === 'error'">{{ s.status }}</span>
+          <span>{{ s.label }}</span>
+          @if (s.detail) {
+            <span class="muted">{{ s.detail }}</span>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  @if (result(); as v) {
+    <div class="card stack">
+      <h2>Do manually in YouTube Studio</h2>
+      <p class="muted small">The YouTube API can't do these.</p>
+      <ul class="checklist">
+        @if (!auditApproved && form().privacy !== 'private') {
+          <li><label class="check"><input type="checkbox" /> Set visibility to {{ publishLabel() }} (API uploads stay Private until the audit)</label></li>
+        }
+        @if (form().pinnedComment.trim()) {
+          <li><label class="check"><input type="checkbox" /> Pin the comment</label></li>
+        }
+        <li><label class="check"><input type="checkbox" /> Shorts only: set the "Related video"</label></li>
+        <li><label class="check"><input type="checkbox" /> Gaming videos: set the game title</label></li>
+        <li><label class="check"><input type="checkbox" /> End screen and cards</label></li>
+      </ul>
+      <div class="row">
+        <a class="btn primary" [href]="'https://studio.youtube.com/video/' + v.id + '/edit'" target="_blank" rel="noopener">Open in Studio</a>
+        <a class="btn" [routerLink]="['/videos', v.id]">Edit here</a>
+        <button type="button" (click)="reset()">Upload another</button>
+      </div>
+    </div>
+  }
+</section>

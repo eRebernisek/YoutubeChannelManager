@@ -1,0 +1,43 @@
+<header class="topbar">
+  <a class="brand" routerLink="/">
+    <span class="brand-mark">YT</span>
+    <span class="brand-text">Channel Manager</span>
+  </a>
+  @if (auth.signedIn()) {
+    <nav aria-label="Main">
+      @for (item of nav; track item.path) {
+        <a [routerLink]="item.path" routerLinkActive="active">{{ item.label }}</a>
+      }
+    </nav>
+  }
+  <div class="spacer"></div>
+  @if (auth.signedIn()) {
+    <a
+      class="quota"
+      routerLink="/dashboard"
+      [class.warn]="quota.used() > quota.limit * 0.8"
+      title="Estimated YouTube API quota used today (resets at midnight Pacific Time)"
+    >
+      {{ quota.used() }} / {{ quota.limit }}
+    </a>
+  }
+  @if (auth.sessionExpired()) {
+    <button type="button" class="primary sm" (click)="auth.reauthenticate()">Sign in again</button>
+  }
+  <app-channel-picker />
+</header>
+
+<main class="content">
+  <router-outlet />
+</main>
+
+<footer class="footer muted small">
+  <a routerLink="/privacy">Privacy</a>
+  <a routerLink="/terms">Terms</a>
+</footer>
+
+<div class="toasts" aria-live="polite">
+  @for (t of toast.toasts(); track t.id) {
+    <div class="toast" [class]="t.kind" (click)="toast.dismiss(t.id)">{{ t.message }}</div>
+  }
+</div>
