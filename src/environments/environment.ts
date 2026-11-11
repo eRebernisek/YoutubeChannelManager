@@ -4,7 +4,7 @@
  */
 export const environment = {
   /** "Web application" OAuth client from Google Cloud project streambot-511716 (spec §8.5). */
-  googleClientId: '',
+  googleClientId: '479687203251-qkbpv8n4nhtve43e5ivka8l8p7l9br9q.apps.googleusercontent.com',
   /** Channels shown in the picker before the first sign-in (spec §2.1). */
   seedChannels: [
     { id: 'UCRoE-dG8Ds_yh0Nzvds6Iuw', title: 'ManyTheGuy', note: 'Live streams, VODs' },

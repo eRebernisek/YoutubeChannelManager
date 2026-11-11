@@ -30,7 +30,9 @@ import { ChannelsService } from '../../core/channels.service';
             Sign in with Google
           </button>
         }
-        <a class="btn" routerLink="/channels">Channels</a>
+        @if (auth.signedIn()) {
+          <a class="btn" routerLink="/channels">Channels</a>
+        }
       </div>
 
       @if (!auth.configured) {
@@ -40,26 +42,30 @@ import { ChannelsService } from '../../core/channels.service';
         </p>
       }
 
-      <div class="card stack">
-        <h2>Channels</h2>
-        @for (ch of channels.channels(); track ch.id) {
-          <a class="list-item" [href]="'https://www.youtube.com/channel/' + ch.id" target="_blank" rel="noopener">
-            <span class="avatar">
-              @if (ch.avatarUrl) {
-                <img [src]="ch.avatarUrl" alt="" referrerpolicy="no-referrer" />
-              } @else {
-                {{ ch.title.charAt(0) }}
-              }
-            </span>
-            <span>
-              <strong>{{ channels.displayName(ch) }}</strong>
-              @if (ch.note) {
-                <span class="muted small"> · {{ ch.note }}</span>
-              }
-            </span>
-          </a>
-        }
-      </div>
+      @if (auth.signedIn()) {
+        <div class="card stack">
+          <h2>Channels</h2>
+          @for (ch of channels.channels(); track ch.id) {
+            <a class="list-item" [href]="'https://www.youtube.com/channel/' + ch.id" target="_blank" rel="noopener">
+              <span class="avatar">
+                @if (ch.avatarUrl) {
+                  <img [src]="ch.avatarUrl" alt="" referrerpolicy="no-referrer" />
+                } @else {
+                  {{ ch.title.charAt(0) }}
+                }
+              </span>
+              <span>
+                <strong>{{ channels.displayName(ch) }}</strong>
+                @if (ch.note) {
+                  <span class="muted small"> · {{ ch.note }}</span>
+                }
+              </span>
+            </a>
+          } @empty {
+            <p class="muted">No channels yet. Sign in again and pick one in Google's list.</p>
+          }
+        </div>
+      }
 
       <p class="row small">
         <a [href]="discordUrl" target="_blank" rel="noopener">Discord</a>

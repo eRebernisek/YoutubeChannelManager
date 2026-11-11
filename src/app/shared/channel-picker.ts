@@ -20,7 +20,7 @@ import { ChannelsService } from '../core/channels.service';
       [disabled]="auth.busy()"
       (click)="open.set(!open())"
     >
-      @if (channels.active(); as ch) {
+      @if (auth.signedIn() && channels.active(); as ch) {
         <span class="avatar" style="--size: 26px">
           @if (ch.avatarUrl) {
             <img [src]="ch.avatarUrl" alt="" referrerpolicy="no-referrer" />
@@ -33,47 +33,49 @@ import { ChannelsService } from '../core/channels.service';
           <span title="Locked while a job runs" aria-label="locked">🔒</span>
         }
       } @else {
-        <span class="name">Pick a channel</span>
+        <span class="name">Sign in</span>
       }
       <span aria-hidden="true" class="muted">▾</span>
     </button>
 
     @if (open()) {
       <div class="menu" role="menu">
-        @if (auth.lockReason(); as reason) {
-          <p class="alert warn small">{{ reason }} is running. Switching will ask first.</p>
-        }
-        @for (ch of channels.channels(); track ch.id) {
-          <button
-            type="button"
-            role="menuitemradio"
-            class="item"
-            [attr.aria-checked]="ch.id === channels.activeId()"
-            [class.current]="ch.id === channels.activeId()"
-            (click)="pick(ch.id)"
-          >
-            <span class="avatar" style="--size: 28px">
-              @if (ch.avatarUrl) {
-                <img [src]="ch.avatarUrl" alt="" referrerpolicy="no-referrer" />
-              } @else {
-                {{ ch.title.charAt(0) }}
-              }
-            </span>
-            <span class="text">
-              <span class="ellipsis">{{ channels.displayName(ch) }}</span>
-              <span class="muted small ellipsis">{{ ch.handle || ch.note || ch.id }}</span>
-            </span>
-            <span
-              class="dot"
-              [class.on]="auth.hasToken(ch.id)"
-              [attr.title]="auth.hasToken(ch.id) ? 'Signed in this session' : 'Needs sign-in'"
-            ></span>
-          </button>
-        }
-        <hr />
-        <button type="button" class="item" (click)="add()">+ Add / switch channel</button>
-        <a class="item" routerLink="/channels" (click)="open.set(false)">Manage channels…</a>
-        @if (auth.signedIn()) {
+        @if (!auth.signedIn()) {
+          <button type="button" class="item" (click)="add()">Sign in with Google</button>
+        } @else {
+          @if (auth.lockReason(); as reason) {
+            <p class="alert warn small">{{ reason }} is running. Switching will ask first.</p>
+          }
+          @for (ch of channels.channels(); track ch.id) {
+            <button
+              type="button"
+              role="menuitemradio"
+              class="item"
+              [attr.aria-checked]="ch.id === channels.activeId()"
+              [class.current]="ch.id === channels.activeId()"
+              (click)="pick(ch.id)"
+            >
+              <span class="avatar" style="--size: 28px">
+                @if (ch.avatarUrl) {
+                  <img [src]="ch.avatarUrl" alt="" referrerpolicy="no-referrer" />
+                } @else {
+                  {{ ch.title.charAt(0) }}
+                }
+              </span>
+              <span class="text">
+                <span class="ellipsis">{{ channels.displayName(ch) }}</span>
+                <span class="muted small ellipsis">{{ ch.handle || ch.note || ch.id }}</span>
+              </span>
+              <span
+                class="dot"
+                [class.on]="auth.hasToken(ch.id)"
+                [attr.title]="auth.hasToken(ch.id) ? 'Signed in this session' : 'Needs sign-in'"
+              ></span>
+            </button>
+          }
+          <hr />
+          <button type="button" class="item" (click)="add()">+ Add / switch channel</button>
+          <a class="item" routerLink="/channels" (click)="open.set(false)">Manage channels…</a>
           <button type="button" class="item danger" (click)="signOut()">Sign out</button>
         }
       </div>

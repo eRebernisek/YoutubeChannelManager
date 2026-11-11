@@ -41,12 +41,17 @@ export class ChannelsService {
   /** Adds or refreshes a channel from `channels.list` data and marks it used. */
   upsert(info: Omit<KnownChannel, 'verified' | 'lastUsed' | 'label' | 'note'>): void {
     const lastUsed = new Date().toISOString();
+    const seed = environment.seedChannels.find((c) => c.id === info.id);
     this.channels.update((list) => {
       const existing = list.find((c) => c.id === info.id);
       if (existing) {
-        return list.map((c) => (c.id === info.id ? { ...c, ...info, verified: true, lastUsed } : c));
+        return list.map((c) =>
+          c.id === info.id
+            ? { ...c, ...info, verified: true, lastUsed, note: c.note ?? seed?.note }
+            : c,
+        );
       }
-      return [...list, { ...info, verified: true, lastUsed }];
+      return [...list, { ...info, verified: true, lastUsed, note: seed?.note }];
     });
     this.saveList();
   }
@@ -108,7 +113,10 @@ export class ChannelsService {
 
   private loadList(): KnownChannel[] {
     const saved = readJson<KnownChannel[] | null>(LIST_KEY, null);
-    if (saved) return saved;
-    return environment.seedChannels.map((c) => ({ ...c, verified: false }));
+    if (!saved) return [];
+    // Drop pre-auth seed placeholders; only keep channels signed into at least once.
+    const verified = saved.filter((c) => c.verified);
+    if (verified.length !== saved.length) writeJson(LIST_KEY, verified);
+    return verified;
   }
 }

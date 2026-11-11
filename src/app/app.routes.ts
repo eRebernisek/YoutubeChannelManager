@@ -20,6 +20,7 @@ export const routes: Routes = [
   },
   {
     path: 'channels',
+    canActivate: [signedIn],
     loadComponent: () => import('./features/channels/channels').then((m) => m.Channels),
   },
   {

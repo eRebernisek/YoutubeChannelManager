@@ -1,16 +1,14 @@
 import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, resource } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { errorMessage } from '../../core/api-error';
 import { ChannelsService } from '../../core/channels.service';
 import { QuotaService } from '../../core/quota.service';
 import { formatSaoPaulo, nextQuotaReset } from '../../core/time.util';
 import { YoutubeApiService } from '../../core/youtube-api.service';
-import { VideoRow } from '../../shared/video-row';
 
 @Component({
   selector: 'app-dashboard',
-  imports: [DecimalPipe, RouterLink, VideoRow],
+  imports: [DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page">
@@ -76,26 +74,6 @@ import { VideoRow } from '../../shared/video-row';
             }
           </div>
         </div>
-
-        <div class="card stack">
-          <h2>Upcoming scheduled uploads</h2>
-          @for (v of d.scheduled; track v.id) {
-            <app-video-row [video]="v" />
-          } @empty {
-            <p class="muted small">Nothing scheduled in your latest 50 uploads.</p>
-          }
-        </div>
-
-        <div class="card stack">
-          <div class="row">
-            <h2>Latest uploads</h2>
-            <span class="spacer"></span>
-            <a routerLink="/videos" class="small">All videos →</a>
-          </div>
-          @for (v of d.latest; track v.id) {
-            <app-video-row [video]="v" />
-          }
-        </div>
       } @else if (data.isLoading()) {
         <div class="spinner"></div>
       }
@@ -143,24 +121,15 @@ export class Dashboard {
   protected readonly data = resource({
     params: () => this.channels.activeId() ?? undefined,
     loader: async () => {
-      const channel = await this.api.myChannel();
-      const uploads = channel.contentDetails?.relatedPlaylists.uploads;
-      const [live, upcoming, page] = await Promise.all([
+      const [channel, live, upcoming] = await Promise.all([
+        this.api.myChannel(),
         this.api.broadcasts('active', 5),
         this.api.broadcasts('upcoming', 5),
-        uploads ? this.api.uploadsPage(uploads) : Promise.resolve({ items: [] }),
       ]);
-      const videos = await this.api.videos(page.items.map((i) => i.contentDetails.videoId));
-      const now = Date.now();
-      const scheduled = videos
-        .filter((v) => v.status.publishAt && Date.parse(v.status.publishAt) > now)
-        .sort((a, b) => Date.parse(a.status.publishAt!) - Date.parse(b.status.publishAt!));
       return {
         channel,
         live: live.items,
         upcoming: upcoming.items,
-        scheduled,
-        latest: videos.slice(0, 10),
       };
     },
   });

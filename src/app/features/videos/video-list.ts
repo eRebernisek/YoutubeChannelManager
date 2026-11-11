@@ -15,8 +15,8 @@ import { Video } from '../../core/youtube.models';
 import { VideoRow } from '../../shared/video-row';
 import { BulkEdit } from './bulk-edit';
 
-type PrivacyFilter = 'all' | 'public' | 'unlisted' | 'private' | 'scheduled';
-type KindFilter = 'all' | 'Short' | 'Video' | 'Live/VOD';
+type PrivacyFilter = 'public' | 'unlisted' | 'private' | 'scheduled';
+type KindFilter = 'Short' | 'Video' | 'Live/VOD';
 
 /** The channel's videos from the uploads playlist (1 unit per 50), with filters and bulk edit. */
 @Component({
@@ -41,14 +41,12 @@ type KindFilter = 'all' | 'Short' | 'Video' | 'Live/VOD';
           (input)="text.set($any($event.target).value)"
         />
         <select [value]="privacy()" (change)="privacy.set($any($event.target).value)" aria-label="Privacy">
-          <option value="all">All privacy</option>
           <option value="public">Public</option>
           <option value="unlisted">Unlisted</option>
           <option value="private">Private</option>
           <option value="scheduled">Scheduled</option>
         </select>
         <select [value]="kind()" (change)="kind.set($any($event.target).value)" aria-label="Type">
-          <option value="all">All types</option>
           <option value="Video">Videos</option>
           <option value="Short">Shorts (≤ 3 min)</option>
           <option value="Live/VOD">Live / VODs</option>
@@ -128,8 +126,8 @@ export class VideoList {
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly text = signal('');
-  protected readonly privacy = signal<PrivacyFilter>('all');
-  protected readonly kind = signal<KindFilter>('all');
+  protected readonly privacy = signal<PrivacyFilter>('public');
+  protected readonly kind = signal<KindFilter>('Video');
   protected readonly selected = signal(new Set<string>());
 
   protected readonly filtered = computed(() => {
@@ -139,10 +137,10 @@ export class VideoList {
     const now = Date.now();
     return this.videos().filter((v) => {
       const scheduled = !!v.status.publishAt && Date.parse(v.status.publishAt) > now;
-      if (privacy === 'scheduled' ? !scheduled : privacy !== 'all' && v.status.privacyStatus !== privacy) {
+      if (privacy === 'scheduled' ? !scheduled : v.status.privacyStatus !== privacy) {
         return false;
       }
-      if (kind !== 'all' && videoKind(v) !== kind) return false;
+      if (videoKind(v) !== kind) return false;
       if (!q) return true;
       return (
         v.snippet.title.toLowerCase().includes(q) ||
