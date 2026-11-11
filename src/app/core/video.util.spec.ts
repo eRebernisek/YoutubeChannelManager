@@ -2,6 +2,7 @@ import {
   moveChaptersToTop,
   parseDuration,
   parseTags,
+  systemPlaylistId,
   validateMetadata,
   videoKind,
   writableStatus,
@@ -16,11 +17,38 @@ describe('video.util', () => {
     expect(parseDuration(undefined)).toBe(0);
   });
 
-  it('guesses the video kind', () => {
-    const base = { id: 'x', snippet: { title: '', description: '', categoryId: '20' }, status: { privacyStatus: 'public' } } as Video;
-    expect(videoKind({ ...base, contentDetails: { duration: 'PT45S' } })).toBe('Short');
-    expect(videoKind({ ...base, contentDetails: { duration: 'PT10M' } })).toBe('Video');
-    expect(videoKind({ ...base, contentDetails: { duration: 'PT45S' }, liveStreamingDetails: {} })).toBe('Live/VOD');
+  it("classifies videos with the channel's Shorts and lives playlists", () => {
+    const base = {
+      id: 'x',
+      snippet: { title: '', description: '', categoryId: '20' },
+      status: { privacyStatus: 'public' },
+      contentDetails: { duration: 'PT45S' },
+    } as Video;
+    const kinds = { shorts: new Set(['x']), lives: new Set(['live']) };
+    expect(videoKind(base, kinds)).toBe('Short');
+    expect(videoKind({ ...base, id: 'other' }, kinds)).toBe('Video');
+    expect(videoKind({ ...base, id: 'live' }, kinds)).toBe('Live/VOD');
+    expect(videoKind({ ...base, liveStreamingDetails: {} }, kinds)).toBe('Live/VOD');
+    // Without the sets, short duration alone doesn't make a Short.
+    expect(videoKind(base)).toBe('Video');
+    expect(videoKind({ ...base, liveStreamingDetails: {} }, null)).toBe('Live/VOD');
+  });
+
+  it('treats non-public #shorts uploads as Shorts', () => {
+    const tagged = {
+      id: 'p',
+      snippet: { title: 'Combo #Shorts', description: '', categoryId: '20' },
+      status: { privacyStatus: 'private' },
+    } as Video;
+    const empty = { shorts: new Set<string>(), lives: new Set<string>() };
+    expect(videoKind(tagged, empty)).toBe('Short');
+    expect(videoKind({ ...tagged, status: { privacyStatus: 'public' } }, empty)).toBe('Video');
+  });
+
+  it("derives the channel's system playlist IDs", () => {
+    expect(systemPlaylistId('UCRoE-dG8Ds_yh0Nzvds6Iuw', 'UUSH')).toBe('UUSHRoE-dG8Ds_yh0Nzvds6Iuw');
+    expect(systemPlaylistId('UCRoE-dG8Ds_yh0Nzvds6Iuw', 'UULV')).toBe('UULVRoE-dG8Ds_yh0Nzvds6Iuw');
+    expect(systemPlaylistId('HCxyz', 'UUSH')).toBeNull();
   });
 
   it('drops publishAt unless the video is private', () => {

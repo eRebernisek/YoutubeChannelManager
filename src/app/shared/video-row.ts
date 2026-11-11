@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { formatSaoPaulo } from '../core/time.util';
+import { VideoKindsService } from '../core/video-kinds.service';
 import { Video } from '../core/youtube.models';
 import { videoKind } from '../core/video.util';
 
@@ -37,12 +38,13 @@ import { videoKind } from '../core/video.util';
 })
 export class VideoRow {
   readonly video = input.required<Video>();
+  private readonly kinds = inject(VideoKindsService).kinds;
 
   protected readonly thumb = computed(() => {
     const t = this.video().snippet.thumbnails;
     return t?.medium?.url ?? t?.default?.url ?? '';
   });
-  protected readonly kind = computed(() => videoKind(this.video()));
+  protected readonly kind = computed(() => videoKind(this.video(), this.kinds()));
   protected readonly scheduled = computed(() => {
     const at = this.video().status.publishAt;
     return at && Date.parse(at) > Date.now() ? formatSaoPaulo(at) : null;

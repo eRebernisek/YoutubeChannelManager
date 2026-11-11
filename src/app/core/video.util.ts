@@ -10,14 +10,37 @@ export function parseDuration(iso: string | undefined): number {
 
 export type VideoKind = 'Live/VOD' | 'Short' | 'Video';
 
+/** IDs from the channel's system playlists, which hold YouTube's own Shorts/live classification. */
+export interface VideoKinds {
+  shorts: Set<string>;
+  lives: Set<string>;
+}
+
 /**
- * The API has no "is Short" flag, so this guesses: live streams by their live details, Shorts by
- * duration (YouTube allows Shorts up to 3 minutes).
+ * Undocumented system playlist for a channel: `UC…` with `UC` replaced by `UUSH` (Shorts), `UULF`
+ * (long-form videos) or `UULV` (lives). Returns null for IDs that don't start with `UC`.
  */
-export function videoKind(v: Video): VideoKind {
-  if (v.liveStreamingDetails) return 'Live/VOD';
-  const secs = parseDuration(v.contentDetails?.duration);
-  return secs > 0 && secs <= 180 ? 'Short' : 'Video';
+export function systemPlaylistId(channelId: string, prefix: 'UUSH' | 'UULF' | 'UULV'): string | null {
+  return channelId.startsWith('UC') ? prefix + channelId.slice(2) : null;
+}
+
+const SHORTS_TAG = /#shorts\b/i;
+
+/**
+ * The API has no "is Short" flag, so this uses the channel's Shorts and lives playlists. Those only
+ * list public videos, so a non-public video counts as a Short when it's tagged `#shorts`. Without
+ * `kinds`, only lives and that tag are detected.
+ */
+export function videoKind(v: Video, kinds?: VideoKinds | null): VideoKind {
+  if (v.liveStreamingDetails || kinds?.lives.has(v.id)) return 'Live/VOD';
+  if (kinds?.shorts.has(v.id)) return 'Short';
+  if (
+    v.status.privacyStatus !== 'public' &&
+    (SHORTS_TAG.test(v.snippet.title) || SHORTS_TAG.test(v.snippet.description ?? ''))
+  ) {
+    return 'Short';
+  }
+  return 'Video';
 }
 
 /**

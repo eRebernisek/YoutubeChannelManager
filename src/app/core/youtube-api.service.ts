@@ -96,6 +96,28 @@ export class YoutubeApiService {
     });
   }
 
+  /**
+   * One page of video IDs from any playlist (1 unit per 50). The channel's system playlists
+   * (Shorts, lives) don't exist when the channel has none, so a 404 is an empty page.
+   */
+  async playlistVideoIds(
+    playlistId: string,
+    pageToken?: string,
+  ): Promise<{ ids: string[]; nextPageToken?: string }> {
+    try {
+      const res = await this.request<ListResponse<PlaylistItem>>(
+        'playlistItems.list',
+        'GET',
+        '/playlistItems',
+        { params: { playlistId, part: 'contentDetails', maxResults: 50, pageToken } },
+      );
+      return { ids: res.items.map((i) => i.contentDetails.videoId), nextPageToken: res.nextPageToken };
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return { ids: [] };
+      throw e;
+    }
+  }
+
   /** Full video resources, fetched in batches of 50 IDs. Keeps the order of `ids`. */
   async videos(
     ids: string[],

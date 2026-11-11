@@ -12,6 +12,8 @@ import {
   writableSnippet,
   writableStatus,
 } from '../../core/video.util';
+import { ChannelsService } from '../../core/channels.service';
+import { VideoKindsService } from '../../core/video-kinds.service';
 import { YoutubeApiService } from '../../core/youtube-api.service';
 import { PrivacyStatus, Video } from '../../core/youtube.models';
 import { CategoriesService } from '../../shared/categories.service';
@@ -203,6 +205,13 @@ export class VideoEdit {
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
   protected readonly categories = inject(CategoriesService);
+  private readonly kindsSvc = inject(VideoKindsService);
+
+  constructor() {
+    const channelId = inject(ChannelsService).activeId();
+    // Only the type badge depends on this; a failure just leaves it as Video.
+    if (channelId) this.kindsSvc.load(channelId).catch(() => undefined);
+  }
 
   /** Route param. */
   readonly id = input.required<string>();
@@ -227,7 +236,7 @@ export class VideoEdit {
   );
   protected readonly kind = computed(() => {
     const v = this.video.value();
-    return v ? videoKind(v) : '';
+    return v ? videoKind(v, this.kindsSvc.kinds()) : '';
   });
   protected readonly descBytes = computed(
     () => new TextEncoder().encode(this.form()?.description ?? '').length,

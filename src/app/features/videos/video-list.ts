@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -9,6 +10,7 @@ import {
 } from '@angular/core';
 import { errorMessage } from '../../core/api-error';
 import { ChannelsService } from '../../core/channels.service';
+import { VideoKindsService } from '../../core/video-kinds.service';
 import { videoKind } from '../../core/video.util';
 import { YoutubeApiService } from '../../core/youtube-api.service';
 import { Video } from '../../core/youtube.models';
@@ -31,7 +33,7 @@ function sortDate(v: Video): number {
 /** The channel's videos from the uploads playlist (1 unit per 50), with filters and bulk edit. */
 @Component({
   selector: 'app-video-list',
-  imports: [VideoRow, BulkEdit],
+  imports: [NgTemplateOutlet, VideoRow, BulkEdit],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page">
@@ -39,7 +41,9 @@ function sortDate(v: Video): number {
         <h1>Videos</h1>
         <span class="muted small">{{ videos().length }} loaded{{ nextPage() ? '' : ' (all)' }}</span>
         <span class="spacer"></span>
-        <button type="button" class="sm" (click)="reload()" [disabled]="loading()">Refresh</button>
+        <button type="button" class="sm" (click)="refresh()" [disabled]="loading() || kindsLoading()">
+          Refresh
+        </button>
       </div>
 
       <div class="card row">
@@ -58,13 +62,8 @@ function sortDate(v: Video): number {
         </select>
         <select [value]="kind()" (change)="onKind($any($event.target).value)" aria-label="Type">
           <option value="Video">Videos</option>
-          <option value="Short">Shorts (≤ 3 min)</option>
+          <option value="Short">Shorts</option>
           <option value="Live/VOD">Live / VODs</option>
-        </select>
-        <select [value]="pageSize()" (change)="onPageSize(+$any($event.target).value)" aria-label="Per page">
-          <option [value]="10">10 per page</option>
-          <option [value]="20">20 per page</option>
-          <option [value]="30">30 per page</option>
         </select>
       </div>
 
@@ -75,6 +74,60 @@ function sortDate(v: Video): number {
       @if (selected().size) {
         <app-bulk-edit [videos]="selectedVideos()" (done)="afterBulk($event)" (cancel)="clearSelection()" />
       }
+
+      <ng-template #pageLinks>
+        <nav class="pages" aria-label="Pages">
+          <button
+            type="button"
+            class="sm"
+            aria-label="Previous page"
+            [disabled]="page() <= 0"
+            (click)="goPage(page() - 1)"
+          >
+            ‹
+          </button>
+          @for (p of pageItems(); track $index) {
+            @if (p === null) {
+              <span class="gap muted" aria-hidden="true">…</span>
+            } @else {
+              <button
+                type="button"
+                class="sm"
+                [class.current]="p === page()"
+                [attr.aria-current]="p === page() ? 'page' : null"
+                (click)="goPage(p)"
+              >
+                {{ p + 1 }}
+              </button>
+            }
+          }
+          <button
+            type="button"
+            class="sm"
+            aria-label="Next page"
+            [disabled]="page() >= totalPages() - 1"
+            (click)="goPage(page() + 1)"
+          >
+            ›
+          </button>
+        </nav>
+      </ng-template>
+
+      <div class="row pager">
+        <label class="per-page small">
+          Show
+          <select [value]="pageSize()" (change)="onPageSize(+$any($event.target).value)">
+            <option [value]="10">10</option>
+            <option [value]="20">20</option>
+            <option [value]="30">30</option>
+          </select>
+          per page
+        </label>
+        <span class="spacer"></span>
+        @if (filtered().length) {
+          <ng-container [ngTemplateOutlet]="pageLinks" />
+        }
+      </div>
 
       <div class="card" style="padding: 0">
         @if (paged().length) {
@@ -101,30 +154,19 @@ function sortDate(v: Video): number {
             <app-video-row [video]="v" />
           </div>
         } @empty {
-          @if (!loading()) {
+          @if (!loading() && !kindsLoading()) {
             <p class="muted" style="padding: 1rem">No videos match.</p>
           }
         }
       </div>
 
-      @if (filtered().length) {
-        <div class="row pager">
-          <button type="button" class="sm" [disabled]="page() <= 0" (click)="goPage(page() - 1)">
-            Previous
-          </button>
-          <span class="muted small">Page {{ page() + 1 }} of {{ totalPages() }}</span>
-          <button
-            type="button"
-            class="sm"
-            [disabled]="page() >= totalPages() - 1"
-            (click)="goPage(page() + 1)"
-          >
-            Next
-          </button>
+      @if (totalPages() > 1) {
+        <div class="row pager end">
+          <ng-container [ngTemplateOutlet]="pageLinks" />
         </div>
       }
 
-      @if (loading()) {
+      @if (loading() || kindsLoading()) {
         <div class="spinner"></div>
       } @else if (nextPage()) {
         <div class="row">
@@ -150,14 +192,42 @@ function sortDate(v: Video): number {
       }
     }
     .pager {
-      justify-content: center;
       gap: 0.75rem;
+      &.end {
+        justify-content: flex-end;
+      }
+    }
+    .per-page {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      select {
+        padding: 0.3rem 0.5rem;
+      }
+    }
+    .pages {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem;
+      button {
+        min-width: 2.1rem;
+      }
+      button.current {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+    }
+    .gap {
+      padding: 0 0.25rem;
     }
   `,
 })
 export class VideoList {
   private readonly api = inject(YoutubeApiService);
   private readonly channels = inject(ChannelsService);
+  private readonly kindsSvc = inject(VideoKindsService);
 
   protected readonly videos = signal<Video[]>([]);
   protected readonly nextPage = signal<string | undefined>(undefined);
@@ -170,10 +240,15 @@ export class VideoList {
   protected readonly page = signal(0);
   protected readonly selected = signal(new Set<string>());
 
+  protected readonly kindsLoading = signal(false);
+
   protected readonly filtered = computed(() => {
     const q = this.text().trim().toLowerCase();
     const privacy = this.privacy();
     const kind = this.kind();
+    const kinds = this.kindsSvc.kinds();
+    // Without the sets every Short would briefly show as a Video, so wait for them.
+    if (!kinds && this.kindsLoading()) return [];
     const now = Date.now();
     return this.videos()
       .filter((v) => {
@@ -181,7 +256,7 @@ export class VideoList {
         if (privacy === 'scheduled' ? !scheduled : v.status.privacyStatus !== privacy) {
           return false;
         }
-        if (videoKind(v) !== kind) return false;
+        if (videoKind(v, kinds) !== kind) return false;
         if (!q) return true;
         return (
           v.snippet.title.toLowerCase().includes(q) ||
@@ -200,6 +275,24 @@ export class VideoList {
     const size = this.pageSize();
     const start = this.page() * size;
     return this.filtered().slice(start, start + size);
+  });
+
+  /** Page indexes to show as buttons; `null` is a "…" gap. Keeps first, last and ±1 around current. */
+  protected readonly pageItems = computed<(number | null)[]>(() => {
+    const total = this.totalPages();
+    const current = this.page();
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+    const keep = new Set([0, total - 1, current - 1, current, current + 1]);
+    if (current <= 2) [1, 2, 3].forEach((i) => keep.add(i));
+    if (current >= total - 3) [total - 4, total - 3, total - 2].forEach((i) => keep.add(i));
+    const items: (number | null)[] = [];
+    let prev = -1;
+    for (const i of [...keep].filter((i) => i >= 0 && i < total).sort((a, b) => a - b)) {
+      if (i - prev > 1) items.push(null);
+      items.push(i);
+      prev = i;
+    }
+    return items;
   });
 
   protected readonly rangeLabel = computed(() => {
@@ -257,14 +350,32 @@ export class VideoList {
     this.page.set(Math.max(0, Math.min(index, this.totalPages() - 1)));
   }
 
-  protected async reload(): Promise<void> {
+  /** Refresh button: also re-reads the Shorts/lives sets. */
+  protected refresh(): Promise<void> {
+    return this.reload(true);
+  }
+
+  protected async reload(forceKinds = false): Promise<void> {
     this.generation++;
     this.videos.set([]);
     this.selected.set(new Set());
     this.nextPage.set(undefined);
     this.uploadsId = undefined;
     this.page.set(0);
-    await this.fetchPage();
+    await Promise.all([this.fetchPage(), this.loadKinds(forceKinds)]);
+  }
+
+  private async loadKinds(force: boolean): Promise<void> {
+    const id = this.channels.activeId();
+    if (!id) return;
+    this.kindsLoading.set(true);
+    try {
+      await this.kindsSvc.load(id, force);
+    } catch (e) {
+      this.error.set(`Couldn't read Shorts and lives (types may be wrong): ${errorMessage(e)}`);
+    } finally {
+      this.kindsLoading.set(false);
+    }
   }
 
   protected loadMore(): Promise<void> {
